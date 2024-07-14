@@ -1,0 +1,17 @@
+[package]
+name = "ddls"
+version = "0.0.0"
+edition = "2021"
+authors = ["Raphael Darley <raphael@raphaeldarley.com>"]
+
+[dependencies]
+axum = "0.7.5"
+git2 = "0.19.0"
+serde = { version = "1.0.204", features = ["derive"] }
+tokio = { version = "1.38.0", features = [
+    "fs",
+    "net",
+    "rt",
+    "rt-multi-thread",
+] }
+tokio-process = "0.2.5"
