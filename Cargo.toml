@@ -3,6 +3,10 @@ name = "ddls"
 version = "0.0.0"
 edition = "2021"
 authors = ["Raphael Darley <raphael@raphaeldarley.com>"]
+license = "MIT OR Apache-2.0"
+description = "A tool for managing and deploying programs on servers"
+homepage = "https://github.com/raphaeldarley/ddls"
+repository = "https://github.com/raphaeldarley/ddls"
 
 [dependencies]
 axum = "0.7.5"
