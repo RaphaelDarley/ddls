@@ -1,12 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use serde::Deserialize;
-use tokio::fs::{DirBuilder, File, OpenOptions};
+use tokio::fs::DirBuilder;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
 use crate::error::DdlsError;
+use crate::parse::proc_status::{status_is_done, update_status, Cmd};
 
 /// Description of a process from config
 #[derive(Debug, Clone, Deserialize)]
@@ -54,23 +55,33 @@ impl ProcDesc {
                 .await
                 .expect("dir creation should succeed");
         }
-        self.exec_ignore_out(&self.setup).await
+        if status_is_done(self, Cmd::Setup).await? {
+            info!(proc_name = self.name, "skipping setup");
+            return Ok(());
+        };
+        self.exec_ignore_out(&self.setup).await?;
+        update_status(&self, Cmd::Setup, self.setup.to_owned()).await
     }
 
     pub async fn prepare(&self) -> Result<(), DdlsError> {
-        self.exec_ignore_out(&self.prepare).await
+        if status_is_done(self, Cmd::Prepare).await? {
+            info!(proc_name = self.name, "skipping prepare");
+            return Ok(());
+        };
+        self.exec_ignore_out(&self.prepare).await?;
+        update_status(&self, Cmd::Prepare, self.prepare.to_owned()).await
     }
 
     pub async fn update(&self) -> Result<(), DdlsError> {
-        self.exec_ignore_out(&self.prepare).await
+        if status_is_done(self, Cmd::Update).await? {
+            info!(proc_name = self.name, "skipping update");
+            return Ok(());
+        };
+        self.exec_ignore_out(&self.prepare).await?;
+        update_status(&self, Cmd::Update, self.update.to_owned()).await
     }
 
     pub async fn run(self) -> Result<Proc, (ProcDesc, DdlsError)> {
-        // let log_file = OpenOptions::new()
-        //     .append(true)
-        //     .open(self.dir.join("ddls.log"))
-        //     .await
-        //     .expect("should be able to open log file");
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -98,6 +109,12 @@ impl ProcDesc {
         };
 
         let proc = Proc { child, desc: self };
+        update_status(&proc.desc, Cmd::Update, proc.desc.update.to_owned())
+            .await
+            .inspect_err(|e| {
+                warn!(err = ?e, "error updating status with run info, but continuing");
+            })
+            .ok();
         Ok(proc)
     }
 
