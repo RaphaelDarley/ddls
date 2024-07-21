@@ -1,0 +1,4 @@
+[tasks.foo]
+command = "echo"
+args = ["foo"]
+script = "echo bar"
