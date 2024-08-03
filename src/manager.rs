@@ -2,12 +2,19 @@
 
 use std::collections::HashMap;
 
-use tokio::task::JoinSet;
+use nix::{
+    sys::signal::{self, Signal},
+    unistd::Pid,
+};
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::{error, info};
 
-use crate::proc::{Proc, ProcDesc};
+use crate::{
+    message::Message,
+    proc::{Proc, ProcDesc},
+};
 
-pub async fn manager_start<I>(procs: I)
+pub async fn manager_start<I>(procs: I, mut manager_rx: mpsc::Receiver<Message>)
 where
     I: IntoIterator<Item = ProcDesc>,
     // I::Item = (String, ProcDesc),
@@ -34,5 +41,27 @@ where
                 continue;
             }
         };
+    }
+
+    while let Some(msg) = manager_rx.recv().await {
+        info!(?msg, "manager recieved message");
+        match msg {
+            Message::UpdateSingleProc { name, ack } => {
+                let mut proc = running.remove(&name).unwrap();
+                proc.desc.update().await.unwrap();
+                proc.desc.prepare().await.unwrap();
+
+                if let Err(_e) = signal::kill(
+                    Pid::from_raw(proc.child.id().unwrap() as i32),
+                    Signal::SIGTERM,
+                ) {
+                    proc.child.kill().await.expect("kill should work")
+                }
+
+                let new_proc = proc.desc.run().await.expect("running should succeed");
+                running.insert(new_proc.desc.name.clone(), new_proc);
+                ack.send(Ok(())).expect("ack send should work");
+            }
+        }
     }
 }
